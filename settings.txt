@@ -1,0 +1,5 @@
+[config]
+BROWSER = chrome
+BROWSER_PATH = C:\Users\tijesunimi.adebiyi\AppData\Local\Google\Chrome\User Data\Default
+NAME = SITE INSPECTION
+PAGE = https://web.whatsapp.com/
