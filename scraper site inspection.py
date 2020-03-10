@@ -9,7 +9,7 @@ import os
 import datetime
 
 from selenium import webdriver
-from selenium.common.exceptions import NoSuchElementException
+from selenium.common.exceptions import NoSuchElementException,StaleElementReferenceException
 from selenium.webdriver.firefox.firefox_profile import FirefoxProfile
 from selenium.webdriver.firefox.firefox_binary import FirefoxBinary
 from selenium.webdriver.support.ui import WebDriverWait
@@ -70,25 +70,27 @@ def search_chatter(driver, settings):
     Function that search the specified user and activates his chat
     """
     
-    while True:
+    #while True:
         
-        wait = WebDriverWait(driver, 120)
-        wait.until(EC.presence_of_element_located((By.XPATH, "//*[@class='_1c8mz _1YoG6']")))
-        
-        chatterwindow = driver.find_element_by_xpath("//div[@class='_1c8mz _1YoG6']")
-        
+    wait = WebDriverWait(driver, 120)
+    wait.until(EC.presence_of_element_located((By.XPATH, "//*[@class='_1c8mz _1YoG6']")))
+    
+    chatterwindow = driver.find_element_by_xpath("//div[@class='_1c8mz _1YoG6']")
+    
+    while(True):
         driver.execute_script('arguments[0].scrollBy(0,200)', chatterwindow)
         
-        
         chatters = driver.find_elements_by_xpath("//div[@class='X7YrQ']")
-        
-        for chatter in chatters:
-            chatter_name = chatter.find_element_by_xpath(
-                ".//span[@class='_19RFN _1ovWX _F7Vk']").text
-            if chatter_name == settings['name']:
-                chatter.find_element_by_xpath(
-                    ".//div[contains(@class,'_2UaNq')]").click()
-                return
+        try:
+            for chatter in chatters:
+                chatter_name = chatter.find_element_by_xpath(
+                    ".//span[@class='_19RFN _1ovWX _F7Vk']").text
+                if chatter_name == settings['name']:
+                    chatter.find_element_by_xpath(
+                        ".//div[contains(@class,'_2UaNq')]").click()
+                    return
+        except StaleElementReferenceException:
+            pass
 
 
 def read_last_in_message(driver):
@@ -137,6 +139,20 @@ def read_last_in_message(driver):
     return message, emojis
 
 def getValues(driver):
+    '''
+    Get the inspections from the site
+
+    Parameters
+    ----------
+    driver : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    inspections : TYPE
+        DESCRIPTION.
+
+    '''
     
     no = 0 
     
@@ -150,8 +166,10 @@ def getValues(driver):
     driver.execute_script('arguments[0].scrollTo(0,0)', messagebox)
     time.sleep(8)
     messages = []
-    while len(messages) < 3:
+    fails = []
+    while len(messages) < 200:
         time.sleep(5)
+        driver.execute_script('arguments[0].scrollTo(0,0)', messagebox)
         messages = driver.find_elements_by_xpath("//div[contains(@class,'_2Wx_5 _3LG3B')]")
     
     
@@ -174,31 +192,42 @@ def getValues(driver):
             line = -1
             try: #check if message is an update 
                  #i.e.site id is somewhere
-                if 'site id' in lineList[0].lower(): 
+                
+                #because some people are making sily mistakes and disturbing my
+                #site id  line
+                #other possibilities are site ld, site 1d, ... add any more
+                id_name_possible = ['site id', 'site ld', 'site 1d', 'slte id','s1te id']
+                if any( name in lineList[0].lower().replace('.','') 
+                       for name in id_name_possible): 
                     line= 0
-                elif 'site id' in lineList[1].lower(): 
+                elif any( name in lineList[0].lower().replace('.','') 
+                       for name in id_name_possible): 
                     line = 1
             except:
-                print('error' + 'not an update')
+                print(authorblk + 'error not an update')
                 pass
             
             
             
             #if message is ok
             if line != -1:
-                
-                site_id = re.split(':|-', lineList[line])[-1]
-                
-                authorblklist = re.split(",|]", authorblk)
-                date = authorblklist[1]
-                author  = authorblklist[2]
-        		
-        	
-                inspection[0] =date
-                inspection[1] =author
-                inspection[2] = site_id
-                inspections.append(inspection.copy()) 
-                #print(inspection)
+                try:
+                    site_id = re.split(':|-| |;', lineList[line])[-1]
+                    
+                    authorblklist = re.split(",|]", authorblk.rstrip())
+                    date = authorblklist[1]
+                    author  = authorblklist[2].replace(':','')
+            		
+            	
+                    inspection[0] =date
+                    inspection[1] =author
+                    inspection[2] = site_id
+                    inspections.append(inspection.copy()) 
+                    #print(inspection)
+                    
+                except: #if any parsing error comes around here
+                    fails.append([authorblk,insp])
+                    pass
 
                 
             #print (str(no) +'\n')
@@ -211,7 +240,12 @@ def getValues(driver):
             print(message.text)
             pass
         
-    return inspections
+    return inspections,fails
+
+def from_fails(fails):
+    print('List of fails')
+    for fail in fails:
+        print(fail[0]+'\n'+fail[1])
 
 
                 
@@ -226,7 +260,7 @@ def from_ins(inspections):
         
     inspections_all_csv =  '\n'.join(inspections_strlist)
     
-    print(inspections_all_csv)
+    #print(inspections_all_csv)
     
     currentDT = datetime.datetime.now()
     
@@ -234,6 +268,8 @@ def from_ins(inspections):
     insp_file = open(insp_file_name, 'w')
     insp_file.write(inspections_all_csv)
     insp_file.close()
+    
+    print('CSV file created')
     
     
     
@@ -252,8 +288,9 @@ def main():
     
         
     search_chatter(driver, settings)
-    inspections = getValues(driver)
+    inspections,fails = getValues(driver)
     from_ins(inspections)
+    from_fails(fails)
     
 # =============================================================================
 #     previous_in_message = None
